@@ -1,0 +1,129 @@
+#!/bin/bash
+# Hermes WebUI Service Script for Unraid
+# /etc/rc.d/rc.hermes-webui
+
+# Configuration
+HERMES_WEBUI_DIR="/boot/config/plugins/hermes-webui"
+HERMES_HOME="/boot/config/plugins/hermes/.hermes"
+PIDFILE="/var/run/hermes-webui.pid"
+LOGFILE="${HERMES_HOME}/webui.log"
+
+# Source plugin settings if exists
+[ -f /boot/config/plugins/hermes/hermes.cfg ] && . /boot/config/plugins/hermes/hermes.cfg
+
+# Use settings or defaults
+WEBUI_PORT="${WEBUI_PORT:-9000}"
+
+start() {
+    if [ -f "$PIDFILE" ] && kill -0 $(cat "$PIDFILE") 2>/dev/null; then
+        echo "Hermes WebUI is already running (PID: $(cat $PIDFILE))"
+        return 1
+    fi
+    
+    echo "Starting Hermes WebUI..."
+    
+    # Ensure directories exist
+    mkdir -p "$HERMES_HOME"
+    mkdir -p "$(dirname $LOGFILE)"
+    
+    # Set environment
+    export HERMES_HOME="$HERMES_HOME"
+    export HERMES_WEBUI_STATE_DIR="$HERMES_HOME/webui"
+    export HERMES_WEBUI_AGENT_DIR="/boot/config/plugins/hermes/hermes-agent"
+    export HERMES_WEBUI_PYTHON="/usr/bin/python3"
+    export HERMES_WEBUI_HOST="0.0.0.0"
+    export HERMES_WEBUI_PORT="$WEBUI_PORT"
+    export HERMES_WEBUI_AUTO_INSTALL="1"
+    
+    # Source .env if exists
+    if [ -f "$HERMES_WEBUI_DIR/.env" ]; then
+        set -a
+        source "$HERMES_WEBUI_DIR/.env"
+        set +a
+    fi
+    
+    cd "$HERMES_WEBUI_DIR"
+    
+    # Start WebUI using ctl.sh (daemon mode)
+    nohup ./start.sh --no-browser >> "$LOGFILE" 2>&1 &
+    echo $! > "$PIDFILE"
+    
+    # Wait for startup
+    sleep 3
+    
+    if kill -0 $(cat "$PIDFILE") 2>/dev/null; then
+        echo "Hermes WebUI started on port $WEBUI_PORT"
+        echo "Logs: $LOGFILE"
+        return 0
+    else
+        echo "Failed to start Hermes WebUI. Check logs at $LOGFILE"
+        return 1
+    fi
+}
+
+stop() {
+    if [ ! -f "$PIDFILE" ]; then
+        echo "Hermes WebUI is not running"
+        return 1
+    fi
+    
+    echo "Stopping Hermes WebUI..."
+    
+    # Try graceful shutdown
+    if kill -TERM $(cat "$PIDFILE") 2>/dev/null; then
+        # Wait for process to die
+        for i in 1 2 3 4 5; do
+            if ! kill -0 $(cat "$PIDFILE") 2>/dev/null; then
+                break
+            fi
+            sleep 1
+        done
+        
+        # Force kill if still running
+        if kill -0 $(cat "$PIDFILE") 2>/dev/null; then
+            kill -9 $(cat "$PIDFILE") 2>/dev/null
+        fi
+    fi
+    
+    rm -f "$PIDFILE"
+    echo "Hermes WebUI stopped"
+    return 0
+}
+
+restart() {
+    stop
+    sleep 2
+    start
+}
+
+status() {
+    if [ -f "$PIDFILE" ] && kill -0 $(cat "$PIDFILE") 2>/dev/null; then
+        echo "Hermes WebUI is running (PID: $(cat $PIDFILE))"
+        echo "Port: $WEBUI_PORT"
+        echo "Log: $LOGFILE"
+        return 0
+    else
+        echo "Hermes WebUI is not running"
+        [ -f "$PIDFILE" ] && rm -f "$PIDFILE"
+        return 1
+    fi
+}
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart)
+        restart
+        ;;
+    status)
+        status
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|status}"
+        exit 1
+        ;;
+esac

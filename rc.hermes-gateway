@@ -1,0 +1,128 @@
+#!/bin/bash
+# Hermes Gateway Service Script for Unraid
+# /etc/rc.d/rc.hermes-gateway
+# Runs hermes gateway for Telegram, Discord, Slack, etc.
+
+# Configuration
+HERMES_AGENT_DIR="/boot/config/plugins/hermes/hermes-agent"
+HERMES_HOME="/boot/config/plugins/hermes/.hermes"
+PIDFILE="/var/run/hermes-gateway.pid"
+LOGFILE="${HERMES_HOME}/gateway.log"
+
+# Source plugin settings if exists
+[ -f /boot/config/plugins/hermes/hermes.cfg ] && . /boot/config/plugins/hermes/hermes.cfg
+
+start() {
+    if [ -f "$PIDFILE" ] && kill -0 $(cat "$PIDFILE") 2>/dev/null; then
+        echo "Hermes Gateway is already running (PID: $(cat $PIDFILE))"
+        return 1
+    fi
+    
+    echo "Starting Hermes Gateway..."
+    
+    # Ensure directories exist
+    mkdir -p "$HERMES_HOME"
+    
+    # Set environment
+    export HERMES_HOME="$HERMES_HOME"
+    export PATH="$HERMES_AGENT_DIR/venv/bin:$PATH"
+    
+    # Source .env if exists (contains API keys for messaging platforms)
+    if [ -f "$HERMES_HOME/.env" ]; then
+        set -a
+        source "$HERMES_HOME/.env"
+        set +a
+    fi
+    
+    # Activate hermes venv and run gateway
+    cd "$HERMES_HOME"
+    
+    nohup "$HERMES_AGENT_DIR/venv/bin/python" -m hermes_cli.main gateway run >> "$LOGFILE" 2>&1 &
+    echo $! > "$PIDFILE"
+    
+    # Wait for startup
+    sleep 2
+    
+    if kill -0 $(cat "$PIDFILE") 2>/dev/null; then
+        echo "Hermes Gateway started"
+        echo "Logs: $LOGFILE"
+        echo ""
+        echo "Configure messaging platforms with:"
+        echo "  hermes gateway setup"
+        return 0
+    else
+        echo "Failed to start Hermes Gateway. Check logs at $LOGFILE"
+        return 1
+    fi
+}
+
+stop() {
+    if [ ! -f "$PIDFILE" ]; then
+        echo "Hermes Gateway is not running"
+        return 1
+    fi
+    
+    echo "Stopping Hermes Gateway..."
+    
+    # Try graceful shutdown
+    if kill -TERM $(cat "$PIDFILE") 2>/dev/null; then
+        # Wait for process to die
+        for i in 1 2 3 4 5; do
+            if ! kill -0 $(cat "$PIDFILE") 2>/dev/null; then
+                break
+            fi
+            sleep 1
+        done
+        
+        # Force kill if still running
+        if kill -0 $(cat "$PIDFILE") 2>/dev/null; then
+            kill -9 $(cat "$PIDFILE") 2>/dev/null
+        fi
+    fi
+    
+    rm -f "$PIDFILE"
+    echo "Hermes Gateway stopped"
+    return 0
+}
+
+restart() {
+    stop
+    sleep 2
+    start
+}
+
+status() {
+    if [ -f "$PIDFILE" ] && kill -0 $(cat "$PIDFILE") 2>/dev/null; then
+        echo "Hermes Gateway is running (PID: $(cat $PIDFILE))"
+        echo "Log: $LOGFILE"
+        
+        # Show gateway status from hermes CLI
+        export HERMES_HOME="$HERMES_HOME"
+        export PATH="$HERMES_AGENT_DIR/venv/bin:$PATH"
+        "$HERMES_AGENT_DIR/venv/bin/hermes" gateway status 2>/dev/null || true
+        return 0
+    else
+        echo "Hermes Gateway is not running"
+        [ -f "$PIDFILE" ] && rm -f "$PIDFILE"
+        return 1
+    fi
+}
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart)
+        restart
+        ;;
+    status)
+        status
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|status}"
+        exit 1
+        ;;
+esac

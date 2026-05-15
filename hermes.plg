@@ -1,0 +1,207 @@
+<?xml version="1.0" standalone="yes"?>
+<!DOCTYPE PLUGIN [
+<!ENTITY name        "hermes">
+<!ENTITY author      "ruffkido">
+<!ENTITY version     "2025.05.14">
+<!ENTITY launch      "Settings/Hermes">
+
+<!ENTITY pythonURL   "https://mirrors.slackware.com/slackware/slackware64-15.0/slackware64/d/python3-3.9.10-x86_64-1.txz">
+<!ENTITY pluginDAT   "/boot/config/plugins/hermes">
+<!ENTITY pythonVER   "3.9.10">
+]>
+<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;">
+
+<CHANGES>
+<![CDATA[
+2025.05.14
+- Initial release
+- Hermes WebUI + Gateway services
+- Config stored on flash drive (survives reboots)
+- Python 3.9 installed from Slackware package
+- WebUI and Hermes Agent cloned to flash drive
+]]>
+</CHANGES>
+
+<SECTIONS>
+  <SECTION name="Prerequisites">
+    <ATTRIBUTE name="Python 3">
+      <ITEM>
+        <!-- Install Python 3.9 from Slackware package -->
+        <![CDATA[
+        if [ ! -f /boot/extra/python3-&pythonVER;-x86_64-1.txz ]; then
+          echo "Downloading Python 3 package..."
+          wget -q -O /boot/extra/python3-&pythonVER;-x86_64-1.txz "&pythonURL;"
+        fi
+        
+        echo "Installing Python 3..."
+        upgradepkg --install-new /boot/extra/python3-&pythonVER;-x86_64-1.txz
+        echo "Python 3 installed."
+        ]]>
+      </ITEM>
+    </ATTRIBUTE>
+  </SECTION>
+  
+  <SECTION name="Hermes Installation">
+    <ATTRIBUTE name="Clone Repositories">
+      <ITEM>
+        <![CDATA[
+        # Create plugin directories
+        mkdir -p &pluginDAT;/.hermes
+        mkdir -p &pluginDAT;/hermes-agent
+        mkdir -p /boot/config/plugins/hermes-webui
+        
+        # Clone Hermes Agent if not exists
+        if [ ! -d "&pluginDAT;/hermes-agent/.git" ]; then
+          echo "Cloning Hermes Agent..."
+          git clone --depth 1 --branch main https://github.com/NousResearch/hermes-agent.git &pluginDAT;/hermes-agent
+        fi
+        
+        # Clone Hermes WebUI if not exists
+        if [ ! -d "/boot/config/plugins/hermes-webui/.git" ]; then
+          echo "Cloning Hermes WebUI..."
+          git clone --depth 1 --branch master https://github.com/nesquena/hermes-webui.git /boot/config/plugins/hermes-webui
+        fi
+        
+        # Create .env for WebUI if not exists
+        if [ ! -f "/boot/config/plugins/hermes-webui/.env" ]; then
+          echo "Creating WebUI .env..."
+          cat > /boot/config/plugins/hermes-webui/.env << 'ENVEOF'
+HERMES_WEBUI_HOST=0.0.0.0
+HERMES_WEBUI_PORT=9000
+HERMES_WEBUI_AGENT_DIR=/boot/config/plugins/hermes/hermes-agent
+HERMES_WEBUI_PYTHON=/usr/bin/python3
+HERMES_HOME=/boot/config/plugins/hermes/.hermes
+HERMES_WEBUI_STATE_DIR=/boot/config/plugins/hermes/.hermes/webui
+HERMES_WEBUI_AUTO_INSTALL=1
+ENVEOF
+        fi
+        
+        # Install Hermes Agent dependencies
+        echo "Installing Hermes Agent dependencies..."
+        cd &pluginDAT;/hermes-agent
+        /usr/bin/python3 -m venv venv
+        source venv/bin/activate
+        pip install --upgrade pip
+        pip install -e .
+        
+        # Install WebUI dependencies
+        echo "Installing WebUI dependencies..."
+        cd /boot/config/plugins/hermes-webui
+        /usr/bin/python3 -m venv venv
+        source venv/bin/activate
+        pip install --upgrade pip
+        pip install -r requirements.txt
+        
+        echo "Hermes installation complete."
+        ]]>
+      </ITEM>
+    </ATTRIBUTE>
+  </SECTION>
+  
+  <SECTION name="Service Scripts">
+    <ATTRIBUTE name="Install">
+      <ITEM>
+        <![CDATA[
+        # Install service scripts to /etc/rc.d/ (RAM, reinstalled on each boot)
+        install -m 0755 &pluginDAT;/rc.hermes-webui /etc/rc.d/
+        install -m 0755 &pluginDAT;/rc.hermes-gateway /etc/rc.d/
+        
+        # Create hermes command wrapper
+        cat > /usr/local/bin/hermes << 'HERMESWRAP'
+#!/bin/bash
+# Wrapper to run hermes with correct HERMES_HOME
+export HERMES_HOME=/boot/config/plugins/hermes/.hermes
+exec /boot/config/plugins/hermes/hermes-agent/venv/bin/hermes "$@"
+HERMESWRAP
+        chmod +x /usr/local/bin/hermes
+        
+        echo "Service scripts installed."
+        ]]>
+      </ITEM>
+    </ATTRIBUTE>
+  </SECTION>
+  
+  <SECTION name="Configuration">
+    <ATTRIBUTE name="Settings">
+      <ITEM>
+        <![CDATA[
+        # Create plugin settings file
+        if [ ! -f &pluginDAT;/hermes.cfg ]; then
+          echo "Creating settings file..."
+          cat > &pluginDAT;/hermes.cfg << 'CFGEOF'
+# Hermes Plugin Settings
+WEBUI_ENABLED="yes"
+GATEWAY_ENABLED="no"
+WEBUI_PORT="9000"
+CFGEOF
+        fi
+        
+        # Load settings
+        . &pluginDAT;/hermes.cfg
+        ]]>
+      </ITEM>
+    </ATTRIBUTE>
+  </SECTION>
+  
+  <SECTION name="Starting Services">
+    <ATTRIBUTE name="Start">
+      <ITEM>
+        <![CDATA[
+        # Load settings
+        . &pluginDAT;/hermes.cfg
+        
+        # Start WebUI if enabled
+        if [ "$WEBUI_ENABLED" = "yes" ]; then
+          echo "Starting Hermes WebUI..."
+          /etc/rc.d/rc.hermes-webui start
+        fi
+        
+        # Start Gateway if enabled
+        if [ "$GATEWAY_ENABLED" = "yes" ]; then
+          echo "Starting Hermes Gateway..."
+          /etc/rc.d/rc.hermes-gateway start
+        fi
+        
+        echo "Hermes plugin started."
+        ]]>
+      </ITEM>
+    </ATTRIBUTE>
+  </SECTION>
+  
+  <SECTION name="Plugin Page">
+    <ATTRIBUTE name="Settings Page">
+      <ITEM>
+        <![CDATA[
+        # Create plugin webUI page directory
+        mkdir -p /usr/local/emhttp/plugins/hermes
+        install -m 0644 &pluginDAT;/hermes.png /usr/local/emhttp/plugins/hermes/ 2>/dev/null || true
+        echo "Plugin page installed."
+        ]]>
+      </ITEM>
+    </ATTRIBUTE>
+  </SECTION>
+</SECTIONS>
+
+<FILE Run="upgradepkg --install-new">
+  <URL>&pythonURL;</URL>
+</FILE>
+
+<!-- Remove script -->
+<REMOVETAG name="Remove Plugin">
+<![CDATA[
+echo "Stopping Hermes services..."
+/etc/rc.d/rc.hermes-webui stop 2>/dev/null || true
+/etc/rc.d/rc.hermes-gateway stop 2>/dev/null || true
+
+echo "Removing service scripts..."
+rm -f /etc/rc.d/rc.hermes-webui
+rm -f /etc/rc.d/rc.hermes-gateway
+rm -f /usr/local/bin/hermes
+
+echo "Hermes plugin removed."
+echo "Note: Config and data preserved at &pluginDAT;"
+echo "To fully remove, delete: rm -rf &pluginDAT; /boot/config/plugins/hermes-webui"
+]]>
+</REMOVETAG>
+
+</PLUGIN>
