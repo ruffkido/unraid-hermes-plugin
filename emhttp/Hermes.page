@@ -1,0 +1,301 @@
+Menu="OtherSettings"
+Icon="icon.png"
+Title="Hermes"
+Tag="icon.png"
+---
+<?PHP
+/* Hermes plugin — Unraid settings page
+ * Lives at /usr/local/emhttp/plugins/hermes/Hermes.page
+ * Buttons hit include/action.php via AJAX so we never navigate away
+ * from the Unraid menu chrome.
+ */
+
+$PLUGIN_DIR = '/boot/config/plugins/hermes';
+$CFG        = "$PLUGIN_DIR/hermes.cfg";
+$YAML       = "$PLUGIN_DIR/.hermes/config.yaml";
+$ENV        = "$PLUGIN_DIR/.hermes/.env";
+$WEBUI_LOG  = "$PLUGIN_DIR/.hermes/webui.log";
+$GW_LOG     = "$PLUGIN_DIR/.hermes/gateway.log";
+
+function load_cfg($path) {
+  $out = ['WEBUI_ENABLED'=>'yes', 'GATEWAY_ENABLED'=>'no', 'WEBUI_PORT'=>'9000'];
+  if (!is_file($path)) return $out;
+  foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+    if (preg_match('/^\s*([A-Z_]+)="?([^"]*)"?\s*$/', $line, $m)) $out[$m[1]] = $m[2];
+  }
+  return $out;
+}
+
+function service_status($name) {
+  $rc = "/etc/rc.d/rc.hermes-$name";
+  if (!is_executable($rc)) return ['installed'=>false, 'running'=>false, 'pid'=>null];
+  exec("$rc status 2>&1", $out, $code);
+  $pid = null;
+  foreach ($out as $l) if (preg_match('/PID:\s*(\d+)/', $l, $m)) $pid = (int)$m[1];
+  return ['installed'=>true, 'running'=>$code===0, 'pid'=>$pid];
+}
+
+function hermes_lan_ip() {
+  $ini = @parse_ini_file('/var/local/emhttp/nginx.ini');
+  if (!empty($ini['NGINX_LANIP'])) return $ini['NGINX_LANIP'];
+  return preg_replace('/:\d+$/', '', $_SERVER['HTTP_HOST'] ?? 'localhost');
+}
+
+function hermes_short_sha($name) {
+  $sha = trim(@file_get_contents("/usr/local/hermes/$name/.hermes-sha") ?: '');
+  return $sha ? substr($sha, 0, 7) : '';
+}
+
+function hermes_plugin_version() {
+  $out = @shell_exec("plugin version /var/log/plugins/hermes.plg 2>/dev/null");
+  return trim($out ?: '');
+}
+
+function hermes_agent_version() {
+  // hermes --version takes ~1s. Acceptable for a once-on-load render.
+  $out = @shell_exec("HERMES_HOME=/boot/config/plugins/hermes/.hermes "
+                   . "timeout 5 /usr/local/hermes/venv/bin/hermes --version 2>/dev/null | head -1");
+  if (preg_match('/v([\d.]+)\s*\(([\d.\-]+)\)/', (string)$out, $m)) return 'v'.$m[1].' ('.$m[2].')';
+  return '';
+}
+
+function hermes_webui_version() {
+  $f = '/usr/local/hermes/hermes-webui/CHANGELOG.md';
+  if (!is_file($f)) return '';
+  // First non-Unreleased version heading
+  foreach (file($f) as $line) {
+    if (preg_match('/^##\s*\[(v[\d.]+)\]/', $line, $m)) return $m[1];
+  }
+  return '';
+}
+
+function hermes_python_version() {
+  $out = @shell_exec("/usr/local/hermes/python/bin/python3 --version 2>/dev/null");
+  return trim(preg_replace('/^Python\s*/', '', (string)$out));
+}
+
+$cfg     = load_cfg($CFG);
+$webui   = service_status('webui');
+$gateway = service_status('gateway');
+$yaml    = is_file($YAML) ? file_get_contents($YAML) : '';
+$env     = is_file($ENV)  ? file_get_contents($ENV)  : '';
+$host    = hermes_lan_ip();
+
+$v_plugin = hermes_plugin_version();
+$v_agent  = hermes_agent_version();
+$v_webui  = hermes_webui_version();
+$v_python = hermes_python_version();
+$sha_agent = hermes_short_sha('hermes-agent');
+$sha_webui = hermes_short_sha('hermes-webui');
+?>
+
+<style>
+.hermes-flash      { padding:8px 12px; margin:8px 0; border-left:4px solid #4caf50; background:rgba(76,175,80,0.1); display:none; }
+.hermes-flash.err  { border-left-color:#f44336; background:rgba(244,67,54,0.1); }
+.hermes-section    { margin:18px 0; padding:12px 14px; border:1px solid rgba(128,128,128,0.3); border-radius:4px; }
+.hermes-section h3 { margin:0 0 10px 0; font-size:14px; font-weight:bold; }
+.hermes-row        { display:flex; align-items:center; gap:10px; margin:6px 0; flex-wrap:wrap; }
+.hermes-label      { min-width:140px; }
+.hermes-status     { font-family:monospace; }
+.hermes-paths      { font-family:monospace; font-size:12px; opacity:0.65; margin-top:6px; }
+.hermes-textarea   { width:100%; font-family:monospace; font-size:12px; min-height:200px; box-sizing:border-box; }
+.hermes-btn        { padding:4px 10px; margin-right:4px; cursor:pointer; }
+.hermes-btn[disabled]{ opacity:0.5; cursor:wait; }
+.hermes-dot-on     { color:#4caf50; }
+.hermes-dot-off    { color:#bdbdbd; }
+</style>
+
+<div id="hermes-flash" class="hermes-flash"></div>
+
+<!-- =========== Versions =========== -->
+<div class="hermes-section">
+  <h3>Versions</h3>
+  <div class="hermes-row">
+    <span class="hermes-label">Plugin</span>
+    <span class="hermes-status"><?=htmlspecialchars($v_plugin ?: '—')?></span>
+  </div>
+  <div class="hermes-row">
+    <span class="hermes-label">Hermes Agent</span>
+    <span class="hermes-status">
+      <?=htmlspecialchars($v_agent ?: '—')?>
+      <?php if ($sha_agent): ?><span style="opacity:0.55">· commit <?=htmlspecialchars($sha_agent)?></span><?php endif; ?>
+    </span>
+  </div>
+  <div class="hermes-row">
+    <span class="hermes-label">Hermes WebUI</span>
+    <span class="hermes-status">
+      <?=htmlspecialchars($v_webui ?: '—')?>
+      <?php if ($sha_webui): ?><span style="opacity:0.55">· commit <?=htmlspecialchars($sha_webui)?></span><?php endif; ?>
+    </span>
+  </div>
+  <div class="hermes-row">
+    <span class="hermes-label">Python</span>
+    <span class="hermes-status"><?=htmlspecialchars($v_python ?: '—')?></span>
+  </div>
+</div>
+
+<!-- =========== Service Status =========== -->
+<div class="hermes-section">
+  <h3>Service Status</h3>
+
+  <div class="hermes-row">
+    <span class="hermes-label">WebUI</span>
+    <span id="hermes-webui-status" class="hermes-status"></span>
+    <a id="hermes-webui-open" class="hermes-btn" target="_blank" style="display:none">Open</a>
+    <button class="hermes-btn" data-svc="webui" data-op="start">Start</button>
+    <button class="hermes-btn" data-svc="webui" data-op="restart">Restart</button>
+    <button class="hermes-btn" data-svc="webui" data-op="stop">Stop</button>
+  </div>
+
+  <div class="hermes-row">
+    <span class="hermes-label">Gateway</span>
+    <span id="hermes-gw-status" class="hermes-status"></span>
+    <button class="hermes-btn" data-svc="gateway" data-op="start">Start</button>
+    <button class="hermes-btn" data-svc="gateway" data-op="restart">Restart</button>
+    <button class="hermes-btn" data-svc="gateway" data-op="stop">Stop</button>
+  </div>
+
+  <div class="hermes-paths">
+    Logs: <?=htmlspecialchars($WEBUI_LOG)?> · <?=htmlspecialchars($GW_LOG)?>
+  </div>
+</div>
+
+<!-- =========== Plugin Settings =========== -->
+<div class="hermes-section">
+  <h3>Plugin Settings <span style="font-weight:normal;opacity:0.6">→ hermes.cfg</span></h3>
+  <div class="hermes-row">
+    <span class="hermes-label">WebUI port</span>
+    <input id="hermes-port" type="number" min="1" max="65535" value="<?=htmlspecialchars($cfg['WEBUI_PORT'])?>" style="width:90px">
+  </div>
+  <div class="hermes-row">
+    <span class="hermes-label">Enable WebUI</span>
+    <select id="hermes-webui-enabled">
+      <option value="yes"<?=$cfg['WEBUI_ENABLED']==='yes'?' selected':''?>>yes</option>
+      <option value="no" <?=$cfg['WEBUI_ENABLED']==='no' ?' selected':''?>>no</option>
+    </select>
+  </div>
+  <div class="hermes-row">
+    <span class="hermes-label">Enable Gateway</span>
+    <select id="hermes-gw-enabled">
+      <option value="yes"<?=$cfg['GATEWAY_ENABLED']==='yes'?' selected':''?>>yes</option>
+      <option value="no" <?=$cfg['GATEWAY_ENABLED']==='no' ?' selected':''?>>no</option>
+    </select>
+  </div>
+  <div class="hermes-row">
+    <button class="hermes-btn" id="hermes-save-cfg">Apply</button>
+    <span style="opacity:0.6;font-size:12px">Restart the affected service for changes to take effect.</span>
+  </div>
+</div>
+
+<!-- =========== config.yaml =========== -->
+<div class="hermes-section">
+  <h3>config.yaml <span style="font-weight:normal;opacity:0.6">→ <?=htmlspecialchars($YAML)?></span></h3>
+  <textarea id="hermes-yaml" class="hermes-textarea" spellcheck="false"><?=htmlspecialchars($yaml)?></textarea>
+  <div class="hermes-row">
+    <button class="hermes-btn" id="hermes-save-yaml">Save config.yaml</button>
+    <button class="hermes-btn" id="hermes-reload-yaml">Reload from disk</button>
+  </div>
+</div>
+
+<!-- =========== .env =========== -->
+<div class="hermes-section">
+  <h3>.env <span style="font-weight:normal;opacity:0.6">→ <?=htmlspecialchars($ENV)?> (contains secrets)</span></h3>
+  <textarea id="hermes-env" class="hermes-textarea" spellcheck="false" style="min-height:140px"><?=htmlspecialchars($env)?></textarea>
+  <div class="hermes-row">
+    <button class="hermes-btn" id="hermes-save-env">Save .env</button>
+    <button class="hermes-btn" id="hermes-reload-env">Reload from disk</button>
+    <span style="opacity:0.6;font-size:12px">Written with mode 0600.</span>
+  </div>
+</div>
+
+<script>
+(function(){
+  var ACTION_URL = '/plugins/hermes/include/action.php';
+  var HOST       = <?=json_encode($host)?>;
+  var $flash     = $('#hermes-flash');
+
+  function flash(msg, isErr) {
+    $flash.text(msg)
+          .toggleClass('err', !!isErr)
+          .stop(true,true).fadeIn(120).delay(2500).fadeOut(400);
+  }
+
+  function call(data, cb) {
+    return $.post(ACTION_URL, data, null, 'json')
+      .done(function(r){
+        if (r && r.msg) flash(r.msg, !r.ok);
+        if (cb) cb(r);
+      })
+      .fail(function(xhr){
+        flash('Request failed: '+(xhr.statusText||'error'), true);
+      });
+  }
+
+  function renderStatus(s) {
+    var cfg = s.cfg || {};
+    var w   = s.webui   || {};
+    var g   = s.gateway || {};
+
+    var wHtml = (w.running
+      ? '<span class="hermes-dot-on">●</span> Running on :'+cfg.WEBUI_PORT + (w.pid?' (PID '+w.pid+')':'')
+      : '<span class="hermes-dot-off">○</span> Stopped'
+    );
+    var gHtml = (g.running
+      ? '<span class="hermes-dot-on">●</span> Running' + (g.pid?' (PID '+g.pid+')':'')
+      : '<span class="hermes-dot-off">○</span> '+ (cfg.GATEWAY_ENABLED==='yes' ? 'Stopped' : 'Disabled')
+    );
+    $('#hermes-webui-status').html(wHtml);
+    $('#hermes-gw-status').html(gHtml);
+    var $open = $('#hermes-webui-open');
+    if (w.running) {
+      $open.attr('href','http://'+HOST+':'+cfg.WEBUI_PORT+'/').show();
+    } else {
+      $open.hide();
+    }
+  }
+
+  function refreshStatus() {
+    call({action:'status'}, function(r){ if (r && r.ok) renderStatus(r); });
+  }
+
+  // Service buttons
+  $(document).on('click', '.hermes-btn[data-svc]', function(){
+    var $btn = $(this).attr('disabled','disabled');
+    call({action:'service', svc:$btn.data('svc'), op:$btn.data('op')}, function(){
+      refreshStatus();
+    }).always(function(){ $btn.removeAttr('disabled'); });
+  });
+
+  // Apply plugin settings
+  $('#hermes-save-cfg').on('click', function(){
+    var $btn = $(this).attr('disabled','disabled');
+    call({
+      action:'save_cfg',
+      WEBUI_ENABLED:   $('#hermes-webui-enabled').val(),
+      GATEWAY_ENABLED: $('#hermes-gw-enabled').val(),
+      WEBUI_PORT:      $('#hermes-port').val()
+    }, refreshStatus).always(function(){ $btn.removeAttr('disabled'); });
+  });
+
+  // Save / reload editors
+  $('#hermes-save-yaml').on('click', function(){
+    var $btn = $(this).attr('disabled','disabled');
+    call({action:'save_yaml', content:$('#hermes-yaml').val()})
+      .always(function(){ $btn.removeAttr('disabled'); });
+  });
+  $('#hermes-save-env').on('click', function(){
+    var $btn = $(this).attr('disabled','disabled');
+    call({action:'save_env',  content:$('#hermes-env').val()})
+      .always(function(){ $btn.removeAttr('disabled'); });
+  });
+  $('#hermes-reload-yaml').on('click', function(){
+    call({action:'reload_file', which:'yaml'}, function(r){ if (r && r.ok) $('#hermes-yaml').val(r.content); });
+  });
+  $('#hermes-reload-env').on('click', function(){
+    call({action:'reload_file', which:'env'}, function(r){ if (r && r.ok) $('#hermes-env').val(r.content); });
+  });
+
+  // Initial render — re-derive status without a page reload
+  refreshStatus();
+})();
+</script>

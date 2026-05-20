@@ -1,0 +1,12 @@
+# Runtime data — created by user / hermes-agent at runtime
+/.hermes/
+/hermes.cfg
+/webui.env
+
+# Downloaded artifacts — pulled fresh by `plugin install` via FILE elements
+/packages/
+/wheels/
+
+# Misc
+*.tmp
+*.bak

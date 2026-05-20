@@ -2,206 +2,299 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name        "hermes">
 <!ENTITY author      "ruffkido">
-<!ENTITY version     "2025.05.14">
-<!ENTITY launch      "Settings/Hermes">
+<!ENTITY version     "2026.05.19">
+<!ENTITY pluginURL   "https://raw.githubusercontent.com/ruffkido/unraid-hermes-plugin/main/hermes.plg">
+<!ENTITY support     "https://github.com/ruffkido/unraid-hermes-plugin/issues">
 
-<!ENTITY pythonURL   "https://mirrors.slackware.com/slackware/slackware64-15.0/slackware64/d/python3-3.9.10-x86_64-1.txz">
-<!ENTITY pluginDAT   "/boot/config/plugins/hermes">
-<!ENTITY pythonVER   "3.9.10">
+<!-- On-flash layout (persistent) -->
+<!ENTITY plugin      "/boot/config/plugins/&name;">
+<!ENTITY packages    "&plugin;/packages">
+<!ENTITY wheels      "&plugin;/wheels">
+
+<!-- Runtime layout (RAM, rebuilt on every boot) -->
+<!ENTITY runtime     "/usr/local/&name;">
+<!ENTITY emhttp      "/usr/local/emhttp/plugins/&name;">
+
+<!-- Hermetic Python from python-build-standalone (Astral). Bundles its own
+     OpenSSL, expat, libffi, etc. — no Unraid system-library coupling.
+     hermes-agent requires python >= 3.11.
+     Update by bumping pythonBUILD (release date) + pythonVER + pythonSHA.
+     Release index: https://github.com/astral-sh/python-build-standalone/releases -->
+<!ENTITY pythonBUILD "20260510">
+<!ENTITY pythonVER   "3.12.13">
+<!ENTITY pythonPKG   "cpython-&pythonVER;+&pythonBUILD;-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz">
+<!ENTITY pythonURL   "https://github.com/astral-sh/python-build-standalone/releases/download/&pythonBUILD;/&pythonPKG;">
+<!ENTITY pythonSHA   "d480f5d5878910ecbae212bf23bd7c25d7b209eb8cf5e98823c977384d272e88">
+
+<!-- Pinned upstream sources -->
+<!ENTITY agentSHA    "64a9a199bb9552203c89f70acf1ca0faf95b08df">
+<!ENTITY agentURL    "https://github.com/NousResearch/hermes-agent/archive/&agentSHA;.tar.gz">
+<!ENTITY agentTAR    "hermes-agent-&agentSHA;.tar.gz">
+<!ENTITY agentTARSHA "0566014496a56a7625e97654d7aecebb56d8dbf96c7a45fd5a8755c513a092b2">
+
+<!ENTITY webuiSHA    "c8896ac1b660dcfa837354a296bad24b8385be4f">
+<!ENTITY webuiURL    "https://github.com/nesquena/hermes-webui/archive/&webuiSHA;.tar.gz">
+<!ENTITY webuiTAR    "hermes-webui-&webuiSHA;.tar.gz">
+<!ENTITY webuiTARSHA "fe1af2af7330aa290914d6f94455f1f4e80aa64fbca8867094a7a94fd010b2d9">
 ]>
-<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;">
+
+<PLUGIN name="&name;"
+        author="&author;"
+        version="&version;"
+        pluginURL="&pluginURL;"
+        support="&support;"
+        launch="Settings/Hermes"
+        icon="icon.png"
+        min="7.0.0">
 
 <CHANGES>
-<![CDATA[
-2025.05.14
-- Initial release
-- Hermes WebUI + Gateway services
-- Config stored on flash drive (survives reboots)
-- Python 3.9 installed from Slackware package
-- WebUI and Hermes Agent cloned to flash drive
-]]>
+##&version;
+- Rewrite plg in standard Unraid format (sequential FILE elements)
+- Pin upstream sources by commit SHA + SHA256
+- Hermetic Python from python-build-standalone (no Unraid system-lib coupling)
+- Single shared venv for hermes-agent + hermes-webui (required by webui bootstrap)
+- Move runtime to /usr/local/hermes (RAM); keep config on flash
+- Cache pip wheels on flash; idempotent re-runs (sub-second when nothing changed)
+- Add Settings/Hermes page: service controls, hermes.cfg editor, inline config.yaml/.env editors, version display, Open-WebUI button pinned to LAN IP
+- Track daemonized WebUI via pgrep instead of $! (rc.hermes-webui)
+- Plugin icon (Hermes mark) on Plugins page and Settings sidebar
 </CHANGES>
 
-<SECTIONS>
-  <SECTION name="Prerequisites">
-    <ATTRIBUTE name="Python 3">
-      <ITEM>
-        <!-- Install Python 3.9 from Slackware package -->
-        <![CDATA[
-        if [ ! -f /boot/extra/python3-&pythonVER;-x86_64-1.txz ]; then
-          echo "Downloading Python 3 package..."
-          wget -q -O /boot/extra/python3-&pythonVER;-x86_64-1.txz "&pythonURL;"
-        fi
-        
-        echo "Installing Python 3..."
-        upgradepkg --install-new /boot/extra/python3-&pythonVER;-x86_64-1.txz
-        echo "Python 3 installed."
-        ]]>
-      </ITEM>
-    </ATTRIBUTE>
-  </SECTION>
-  
-  <SECTION name="Hermes Installation">
-    <ATTRIBUTE name="Clone Repositories">
-      <ITEM>
-        <![CDATA[
-        # Create plugin directories
-        mkdir -p &pluginDAT;/.hermes
-        mkdir -p &pluginDAT;/hermes-agent
-        mkdir -p /boot/config/plugins/hermes-webui
-        
-        # Clone Hermes Agent if not exists
-        if [ ! -d "&pluginDAT;/hermes-agent/.git" ]; then
-          echo "Cloning Hermes Agent..."
-          git clone --depth 1 --branch main https://github.com/NousResearch/hermes-agent.git &pluginDAT;/hermes-agent
-        fi
-        
-        # Clone Hermes WebUI if not exists
-        if [ ! -d "/boot/config/plugins/hermes-webui/.git" ]; then
-          echo "Cloning Hermes WebUI..."
-          git clone --depth 1 --branch master https://github.com/nesquena/hermes-webui.git /boot/config/plugins/hermes-webui
-        fi
-        
-        # Create .env for WebUI if not exists
-        if [ ! -f "/boot/config/plugins/hermes-webui/.env" ]; then
-          echo "Creating WebUI .env..."
-          cat > /boot/config/plugins/hermes-webui/.env << 'ENVEOF'
-HERMES_WEBUI_HOST=0.0.0.0
-HERMES_WEBUI_PORT=9000
-HERMES_WEBUI_AGENT_DIR=/boot/config/plugins/hermes/hermes-agent
-HERMES_WEBUI_PYTHON=/usr/bin/python3
-HERMES_HOME=/boot/config/plugins/hermes/.hermes
-HERMES_WEBUI_STATE_DIR=/boot/config/plugins/hermes/.hermes/webui
-HERMES_WEBUI_AUTO_INSTALL=1
-ENVEOF
-        fi
-        
-        # Install Hermes Agent dependencies
-        echo "Installing Hermes Agent dependencies..."
-        cd &pluginDAT;/hermes-agent
-        /usr/bin/python3 -m venv venv
-        source venv/bin/activate
-        pip install --upgrade pip
-        pip install -e .
-        
-        # Install WebUI dependencies
-        echo "Installing WebUI dependencies..."
-        cd /boot/config/plugins/hermes-webui
-        /usr/bin/python3 -m venv venv
-        source venv/bin/activate
-        pip install --upgrade pip
-        pip install -r requirements.txt
-        
-        echo "Hermes installation complete."
-        ]]>
-      </ITEM>
-    </ATTRIBUTE>
-  </SECTION>
-  
-  <SECTION name="Service Scripts">
-    <ATTRIBUTE name="Install">
-      <ITEM>
-        <![CDATA[
-        # Install service scripts to /etc/rc.d/ (RAM, reinstalled on each boot)
-        install -m 0755 &pluginDAT;/rc.hermes-webui /etc/rc.d/
-        install -m 0755 &pluginDAT;/rc.hermes-gateway /etc/rc.d/
-        
-        # Create hermes command wrapper
-        cat > /usr/local/bin/hermes << 'HERMESWRAP'
+<!--
+=============================================================================
+ 1. CLEANUP — drop stale cached artifacts from older versions
+=============================================================================
+-->
+<FILE Run="/bin/bash">
+<INLINE>
+PACKAGES=&packages;
+WHEELS=&wheels;
+PYTHON_PKG=&pythonPKG;
+AGENT_TAR=&agentTAR;
+WEBUI_TAR=&webuiTAR;
+<![CDATA[
+mkdir -p "$PACKAGES" "$WHEELS"
+find "$PACKAGES" -maxdepth 1 -name 'hermes-agent-*.tar.gz'   ! -name "$AGENT_TAR"   -delete 2>/dev/null
+find "$PACKAGES" -maxdepth 1 -name 'hermes-webui-*.tar.gz'   ! -name "$WEBUI_TAR"   -delete 2>/dev/null
+find "$PACKAGES" -maxdepth 1 -name 'cpython-*.tar.gz'        ! -name "$PYTHON_PKG"  -delete 2>/dev/null
+# Drop any legacy Slackware-style python3 cached from older plg versions
+find "$PACKAGES" -maxdepth 1 -name 'python3-*.txz' -delete 2>/dev/null
+]]>
+</INLINE>
+</FILE>
+
+<!--
+=============================================================================
+ 2. DOWNLOADS — pinned artifacts, cached on flash, SHA256 verified
+=============================================================================
+-->
+<FILE Name="&packages;/&pythonPKG;">
+  <URL>&pythonURL;</URL>
+  <SHA256>&pythonSHA;</SHA256>
+</FILE>
+
+<FILE Name="&packages;/&agentTAR;">
+  <URL>&agentURL;</URL>
+  <SHA256>&agentTARSHA;</SHA256>
+</FILE>
+
+<FILE Name="&packages;/&webuiTAR;">
+  <URL>&webuiURL;</URL>
+  <SHA256>&webuiTARSHA;</SHA256>
+</FILE>
+
+<!--
+=============================================================================
+ 3. INSTALL — idempotent; runs on first install AND every boot via rc.local
+=============================================================================
+-->
+<FILE Run="/bin/bash">
+<INLINE>
+PLUGIN_DIR=&plugin;
+PACKAGES=&packages;
+WHEELS=&wheels;
+RUNTIME=&runtime;
+PYTHON_VER=&pythonVER;
+PYTHON_PKG=&pythonPKG;
+AGENT_SHA=&agentSHA;
+AGENT_TAR=&agentTAR;
+WEBUI_SHA=&webuiSHA;
+WEBUI_TAR=&webuiTAR;
+VERSION=&version;
+export PATH=&runtime;/python/bin:$PATH
+<![CDATA[
+set -e
+
+echo "----------------------------------------------------"
+echo " Installing Hermes $VERSION"
+echo "----------------------------------------------------"
+
+PYTHON_HOME="$RUNTIME/python"
+PYTHON_BIN="$PYTHON_HOME/bin/python3"
+
+# --- Python 3 (hermetic, from python-build-standalone) ------------------
+# Extracted into RAM; marker file lets idempotent re-runs skip work.
+PYTHON_MARKER="$PYTHON_HOME/.hermes-ver"
+if [ -x "$PYTHON_BIN" ] && [ "$(cat "$PYTHON_MARKER" 2>/dev/null)" = "$PYTHON_VER" ]; then
+  echo "[hermes] Python $PYTHON_VER already provisioned."
+else
+  echo "[hermes] Extracting Python $PYTHON_VER..."
+  rm -rf "$PYTHON_HOME"
+  mkdir -p "$RUNTIME"
+  # Tarball extracts to ./python/; strip the leading dir so it lands at $PYTHON_HOME
+  tar -xzf "$PACKAGES/$PYTHON_PKG" -C "$RUNTIME"
+  echo "$PYTHON_VER" > "$PYTHON_MARKER"
+fi
+
+# Migrate away from any Slackware python3 installed by older plg versions.
+# Only run if both the broken pkg AND our hermetic Python are present.
+if [ -f /var/log/packages/python3-3.9.10-x86_64-1 ] || \
+   [ -f /var/log/packages/python3-3.12.13-x86_64-1 ]; then
+  echo "[hermes] Removing legacy Slackware python3 package..."
+  removepkg python3 2>/dev/null || true
+fi
+
+# --- Source extraction --------------------------------------------------
+mkdir -p "$RUNTIME"
+
+# Marker files record which commit is currently extracted, so we only
+# re-extract when the pinned commit changes.
+extract_if_stale() {
+  local name="$1" tar="$2" sha="$3" dest="$RUNTIME/$1"
+  local marker="$dest/.hermes-sha"
+  if [ -f "$marker" ] && [ "$(cat "$marker" 2>/dev/null)" = "$sha" ] && [ -d "$dest" ]; then
+    echo "[hermes] $name already at $sha"
+    return 0
+  fi
+  echo "[hermes] Extracting $name @ $sha..."
+  rm -rf "$dest"
+  mkdir -p "$dest"
+  tar -xzf "$PACKAGES/$tar" -C "$dest" --strip-components=1
+  echo "$sha" > "$marker"
+}
+
+extract_if_stale hermes-agent "$AGENT_TAR" "$AGENT_SHA"
+extract_if_stale hermes-webui "$WEBUI_TAR" "$WEBUI_SHA"
+
+# Drop any stale per-component venvs from older plg versions, and any
+# .venv that hermes-webui's bootstrap.py may have created on a prior run.
+rm -rf "$RUNTIME/agent-venv" "$RUNTIME/webui-venv" "$RUNTIME/hermes-webui/.venv"
+
+# --- Combined virtualenv (agent + webui) --------------------------------
+# hermes-webui requires a Python that can import BOTH webui deps AND
+# hermes-agent, so they share one venv. Built in RAM (symlinks work, no
+# flash wear); pip wheel cache lives on flash so re-builds skip PyPI.
+VENV="$RUNTIME/venv"
+VENV_MARKER="$VENV/.hermes-sha"
+VENV_SHA="$AGENT_SHA+$WEBUI_SHA"
+if [ -f "$VENV_MARKER" ] && [ "$(cat "$VENV_MARKER" 2>/dev/null)" = "$VENV_SHA" ] && [ -x "$VENV/bin/python" ]; then
+  echo "[hermes] venv already at $VENV_SHA"
+else
+  echo "[hermes] Building venv (agent + webui, can take a few minutes)..."
+  rm -rf "$VENV"
+  "$PYTHON_BIN" -m venv --copies "$VENV"
+  "$VENV/bin/pip" install --quiet --upgrade pip wheel
+  ( cd "$RUNTIME/hermes-agent" && "$VENV/bin/pip" install --quiet --cache-dir "$WHEELS" -e . )
+  ( cd "$RUNTIME/hermes-webui" && "$VENV/bin/pip" install --quiet --cache-dir "$WHEELS" -r requirements.txt )
+  echo "$VENV_SHA" > "$VENV_MARKER"
+fi
+
+# --- Service scripts (RAM, reinstalled every boot) ----------------------
+install -m 0755 "$PLUGIN_DIR/rc.hermes-webui"   /etc/rc.d/rc.hermes-webui
+install -m 0755 "$PLUGIN_DIR/rc.hermes-gateway" /etc/rc.d/rc.hermes-gateway
+
+# --- emhttp settings page (Settings → Hermes) --------------------------
+EMHTTP_DIR=/usr/local/emhttp/plugins/hermes
+mkdir -p "$EMHTTP_DIR/include"
+if [ -d "$PLUGIN_DIR/emhttp" ]; then
+  cp -a "$PLUGIN_DIR/emhttp/." "$EMHTTP_DIR/"
+fi
+
+# --- hermes CLI wrapper -------------------------------------------------
+cat > /usr/local/sbin/hermes <<'WRAP'
 #!/bin/bash
-# Wrapper to run hermes with correct HERMES_HOME
 export HERMES_HOME=/boot/config/plugins/hermes/.hermes
-exec /boot/config/plugins/hermes/hermes-agent/venv/bin/hermes "$@"
-HERMESWRAP
-        chmod +x /usr/local/bin/hermes
-        
-        echo "Service scripts installed."
-        ]]>
-      </ITEM>
-    </ATTRIBUTE>
-  </SECTION>
-  
-  <SECTION name="Configuration">
-    <ATTRIBUTE name="Settings">
-      <ITEM>
-        <![CDATA[
-        # Create plugin settings file
-        if [ ! -f &pluginDAT;/hermes.cfg ]; then
-          echo "Creating settings file..."
-          cat > &pluginDAT;/hermes.cfg << 'CFGEOF'
-# Hermes Plugin Settings
+exec /usr/local/hermes/venv/bin/hermes "$@"
+WRAP
+chmod +x /usr/local/sbin/hermes
+
+# --- Persistent config (only created if missing) -----------------------
+mkdir -p "$PLUGIN_DIR/.hermes"
+if [ ! -f "$PLUGIN_DIR/hermes.cfg" ]; then
+  cat > "$PLUGIN_DIR/hermes.cfg" <<'CFG'
+# Hermes plugin settings (persistent)
 WEBUI_ENABLED="yes"
 GATEWAY_ENABLED="no"
 WEBUI_PORT="9000"
-CFGEOF
-        fi
-        
-        # Load settings
-        . &pluginDAT;/hermes.cfg
-        ]]>
-      </ITEM>
-    </ATTRIBUTE>
-  </SECTION>
-  
-  <SECTION name="Starting Services">
-    <ATTRIBUTE name="Start">
-      <ITEM>
-        <![CDATA[
-        # Load settings
-        . &pluginDAT;/hermes.cfg
-        
-        # Start WebUI if enabled
-        if [ "$WEBUI_ENABLED" = "yes" ]; then
-          echo "Starting Hermes WebUI..."
-          /etc/rc.d/rc.hermes-webui start
-        fi
-        
-        # Start Gateway if enabled
-        if [ "$GATEWAY_ENABLED" = "yes" ]; then
-          echo "Starting Hermes Gateway..."
-          /etc/rc.d/rc.hermes-gateway start
-        fi
-        
-        echo "Hermes plugin started."
-        ]]>
-      </ITEM>
-    </ATTRIBUTE>
-  </SECTION>
-  
-  <SECTION name="Plugin Page">
-    <ATTRIBUTE name="Settings Page">
-      <ITEM>
-        <![CDATA[
-        # Create plugin webUI page directory
-        mkdir -p /usr/local/emhttp/plugins/hermes
-        install -m 0644 &pluginDAT;/hermes.png /usr/local/emhttp/plugins/hermes/ 2>/dev/null || true
-        echo "Plugin page installed."
-        ]]>
-      </ITEM>
-    </ATTRIBUTE>
-  </SECTION>
-</SECTIONS>
+CFG
+fi
+if [ ! -f "$PLUGIN_DIR/webui.env" ]; then
+  cat > "$PLUGIN_DIR/webui.env" <<'ENV'
+# WebUI environment overrides (persistent).
+# HERMES_WEBUI_PASSWORD=
+# HERMES_WEBUI_HOST=0.0.0.0
+# HERMES_WEBUI_PORT=9000
+ENV
+fi
 
-<FILE Run="upgradepkg --install-new">
-  <URL>&pythonURL;</URL>
+echo ""
+echo "----------------------------------------------------"
+echo " Hermes $VERSION installed."
+echo " Config: $PLUGIN_DIR/hermes.cfg"
+echo " Data:   $PLUGIN_DIR/.hermes/"
+echo "----------------------------------------------------"
+echo ""
+]]>
+</INLINE>
 </FILE>
 
-<!-- Remove script -->
-<REMOVETAG name="Remove Plugin">
+<!--
+=============================================================================
+ 4. START SERVICES — reads hermes.cfg, starts only what's enabled
+=============================================================================
+-->
+<FILE Run="/bin/bash">
+<INLINE>
 <![CDATA[
-echo "Stopping Hermes services..."
-/etc/rc.d/rc.hermes-webui stop 2>/dev/null || true
+. /boot/config/plugins/hermes/hermes.cfg
+
+if [ "${WEBUI_ENABLED:-no}" = "yes" ]; then
+  /etc/rc.d/rc.hermes-webui start
+fi
+
+if [ "${GATEWAY_ENABLED:-no}" = "yes" ]; then
+  /etc/rc.d/rc.hermes-gateway start
+fi
+]]>
+</INLINE>
+</FILE>
+
+<!--
+=============================================================================
+ 5. REMOVE — uninstall; preserves user config on flash by default
+=============================================================================
+-->
+<FILE Run="/bin/bash" Method="remove">
+<INLINE>
+<![CDATA[
+echo "[hermes] Stopping services..."
+/etc/rc.d/rc.hermes-webui   stop 2>/dev/null || true
 /etc/rc.d/rc.hermes-gateway stop 2>/dev/null || true
 
-echo "Removing service scripts..."
+echo "[hermes] Removing runtime files..."
 rm -f /etc/rc.d/rc.hermes-webui
 rm -f /etc/rc.d/rc.hermes-gateway
-rm -f /usr/local/bin/hermes
+rm -f /usr/local/sbin/hermes
+rm -rf /usr/local/hermes
+rm -rf /usr/local/emhttp/plugins/hermes
 
-echo "Hermes plugin removed."
-echo "Note: Config and data preserved at &pluginDAT;"
-echo "To fully remove, delete: rm -rf &pluginDAT; /boot/config/plugins/hermes-webui"
+echo ""
+echo "Hermes uninstalled."
+echo "Config preserved at /boot/config/plugins/hermes/"
+echo "To purge fully: rm -rf /boot/config/plugins/hermes /boot/config/plugins/hermes.plg"
+echo ""
 ]]>
-</REMOVETAG>
+</INLINE>
+</FILE>
 
 </PLUGIN>
