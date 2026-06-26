@@ -2,7 +2,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name        "hermes">
 <!ENTITY author      "ruffkido">
-<!ENTITY version     "2026.05.19">
+<!ENTITY version     "2026.06.26">
 <!ENTITY pluginURL   "https://raw.githubusercontent.com/ruffkido/unraid-hermes-plugin/master/hermes.plg">
 <!ENTITY support     "https://github.com/ruffkido/unraid-hermes-plugin/issues">
 
@@ -26,16 +26,16 @@
 <!ENTITY pythonURL   "https://github.com/astral-sh/python-build-standalone/releases/download/&pythonBUILD;/&pythonPKG;">
 <!ENTITY pythonSHA   "d480f5d5878910ecbae212bf23bd7c25d7b209eb8cf5e98823c977384d272e88">
 
-<!-- Pinned upstream sources -->
-<!ENTITY agentSHA    "64a9a199bb9552203c89f70acf1ca0faf95b08df">
-<!ENTITY agentURL    "https://github.com/NousResearch/hermes-agent/archive/&agentSHA;.tar.gz">
-<!ENTITY agentTAR    "hermes-agent-&agentSHA;.tar.gz">
-<!ENTITY agentTARSHA "0566014496a56a7625e97654d7aecebb56d8dbf96c7a45fd5a8755c513a092b2">
+<!-- Pinned upstream sources — release tags + SHA256 -->
+<!ENTITY agentTAG    "v2026.6.19">
+<!ENTITY agentURL    "https://github.com/NousResearch/hermes-agent/archive/refs/tags/&agentTAG;.tar.gz">
+<!ENTITY agentTAR    "hermes-agent-&agentTAG;.tar.gz">
+<!ENTITY agentTARSHA "69b805ec0a7a7be880068ba8a3b17479d7ba29f0cac0a2e9c6692c02f346ba91">
 
-<!ENTITY webuiSHA    "c8896ac1b660dcfa837354a296bad24b8385be4f">
-<!ENTITY webuiURL    "https://github.com/nesquena/hermes-webui/archive/&webuiSHA;.tar.gz">
-<!ENTITY webuiTAR    "hermes-webui-&webuiSHA;.tar.gz">
-<!ENTITY webuiTARSHA "fe1af2af7330aa290914d6f94455f1f4e80aa64fbca8867094a7a94fd010b2d9">
+<!ENTITY webuiTAG    "v0.51.688">
+<!ENTITY webuiURL    "https://github.com/nesquena/hermes-webui/archive/refs/tags/&webuiTAG;.tar.gz">
+<!ENTITY webuiTAR    "hermes-webui-&webuiTAG;.tar.gz">
+<!ENTITY webuiTARSHA "4797dee356f964e96892dddd981d0d4c39f386abe8aa816f7deb13fccc25dea3">
 ]>
 
 <PLUGIN name="&name;"
@@ -50,7 +50,7 @@
 <CHANGES>
 ##&version;
 - Rewrite plg in standard Unraid format (sequential FILE elements)
-- Pin upstream sources by commit SHA + SHA256
+- Pin upstream sources by release tag + SHA256
 - Hermetic Python from python-build-standalone (no Unraid system-lib coupling)
 - Single shared venv for hermes-agent + hermes-webui (required by webui bootstrap)
 - Move runtime to /usr/local/hermes (RAM); keep config on flash
@@ -116,9 +116,9 @@ WHEELS=&wheels;
 RUNTIME=&runtime;
 PYTHON_VER=&pythonVER;
 PYTHON_PKG=&pythonPKG;
-AGENT_SHA=&agentSHA;
+AGENT_TAG=&agentTAG;
 AGENT_TAR=&agentTAR;
-WEBUI_SHA=&webuiSHA;
+WEBUI_TAG=&webuiTAG;
 WEBUI_TAR=&webuiTAR;
 VERSION=&version;
 export PATH=&runtime;/python/bin:$PATH
@@ -157,8 +157,8 @@ fi
 # --- Source extraction --------------------------------------------------
 mkdir -p "$RUNTIME"
 
-# Marker files record which commit is currently extracted, so we only
-# re-extract when the pinned commit changes.
+# Marker files record which release tag is currently extracted, so we only
+# re-extract when the pinned tag changes.
 extract_if_stale() {
   local name="$1" tar="$2" sha="$3" dest="$RUNTIME/$1"
   local marker="$dest/.hermes-sha"
@@ -173,8 +173,8 @@ extract_if_stale() {
   echo "$sha" > "$marker"
 }
 
-extract_if_stale hermes-agent "$AGENT_TAR" "$AGENT_SHA"
-extract_if_stale hermes-webui "$WEBUI_TAR" "$WEBUI_SHA"
+extract_if_stale hermes-agent "$AGENT_TAR" "$AGENT_TAG"
+extract_if_stale hermes-webui "$WEBUI_TAR" "$WEBUI_TAG"
 
 # Drop any stale per-component venvs from older plg versions, and any
 # .venv that hermes-webui's bootstrap.py may have created on a prior run.
@@ -186,7 +186,7 @@ rm -rf "$RUNTIME/agent-venv" "$RUNTIME/webui-venv" "$RUNTIME/hermes-webui/.venv"
 # flash wear); pip wheel cache lives on flash so re-builds skip PyPI.
 VENV="$RUNTIME/venv"
 VENV_MARKER="$VENV/.hermes-sha"
-VENV_SHA="$AGENT_SHA+$WEBUI_SHA"
+VENV_SHA="$AGENT_TAG+$WEBUI_TAG"
 if [ -f "$VENV_MARKER" ] && [ "$(cat "$VENV_MARKER" 2>/dev/null)" = "$VENV_SHA" ] && [ -x "$VENV/bin/python" ]; then
   echo "[hermes] venv already at $VENV_SHA"
 else
