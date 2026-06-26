@@ -35,7 +35,7 @@ function atomic_write($path, $content, $mode = 0644) {
 }
 
 function load_cfg($path) {
-  $out = ['WEBUI_ENABLED'=>'yes', 'GATEWAY_ENABLED'=>'no', 'WEBUI_PORT'=>'9000', 'HERMES_HOME_PATH'=>'/boot/config/plugins/hermes/.hermes'];
+  $out = ['WEBUI_ENABLED'=>'yes', 'GATEWAY_ENABLED'=>'no', 'WEBUI_PORT'=>'9000', 'HERMES_HOME_PATH'=>'/boot/config/plugins/hermes/.hermes', 'HERMES_HOME_MIGRATED_FROM'=>''];
   if (!is_file($path)) return $out;
   foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
     if (preg_match('/^\s*([A-Z_]+)="?([^"]*)"?\s*$/', $line, $m)) $out[$m[1]] = $m[2];
@@ -81,12 +81,38 @@ switch ($action) {
     );
 
   case 'save_cfg':
+    $old = load_cfg($CFG);
+    $old_path = $old['HERMES_HOME_PATH'] ?? '/boot/config/plugins/hermes/.hermes';
+    $new_path = clean_cfg_value($_POST['HERMES_HOME_PATH'] ?? '/boot/config/plugins/hermes/.hermes');
+    $migrate_from = "";
+
+    if ($new_path !== $old_path) {
+      if (!is_dir($new_path)) @mkdir($new_path, 0700, true);
+      if (is_dir($old_path) && ($files = glob($old_path.'/*')) && count($files)) {
+        exec('cp -a '.escapeshellarg($old_path).'/* '.escapeshellarg($new_path).'/ 2>&1', $out, $code);
+        if ($code !== 0) respond(false, 'Migration failed: '.implode('; ', $out));
+        $migrate_from = $old_path;
+      }
+    } else {
+      $migrate_from = $old['HERMES_HOME_MIGRATED_FROM'] ?? "";
+    }
+
     $body  = "# Hermes plugin settings (persistent) — managed by Settings/Hermes\n";
-    $body .= 'WEBUI_ENABLED="'.clean_cfg_value($_POST['WEBUI_ENABLED']   ?? 'no'  )."\"\n";
-    $body .= 'GATEWAY_ENABLED="'.clean_cfg_value($_POST['GATEWAY_ENABLED'] ?? 'no'  )."\"\n";
-    $body .= 'WEBUI_PORT="'.clean_cfg_value($_POST['WEBUI_PORT']      ?? '9000')."\"\n";
-    $body .= 'HERMES_HOME_PATH="'.clean_cfg_value($_POST['HERMES_HOME_PATH'] ?? '/boot/config/plugins/hermes/.hermes')."\"\n";
+    $body .= 'WEBUI_ENABLED="'.clean_cfg_value($_POST['WEBUI_ENABLED']   ?? 'no'  )."\n";
+    $body .= 'GATEWAY_ENABLED="'.clean_cfg_value($_POST['GATEWAY_ENABLED'] ?? 'no'  )."\n";
+    $body .= 'WEBUI_PORT="'.clean_cfg_value($_POST['WEBUI_PORT']      ?? '9000')."\n";
+    $body .= 'HERMES_HOME_PATH="'.$new_path."\n";
+    $body .= 'HERMES_HOME_MIGRATED_FROM="'.$migrate_from."\n";
     if (!atomic_write($CFG, $body, 0644)) respond(false, 'Could not write hermes.cfg');
+
+    if ($new_path !== $old_path) {
+      exec('/etc/rc.d/rc.hermes-webui restart 2>&1', $out_webui, $w);
+      exec('/etc/rc.d/rc.hermes-gateway restart 2>&1', $out_gw,   $g);
+      respond(true, 'Settings saved. Files migrated and services restarted.', [
+        'migrated_from' => $migrate_from,
+        'new_path'      => $new_path,
+      ]);
+    }
     respond(true, 'Settings saved.');
 
   case 'save_yaml':
@@ -96,6 +122,19 @@ switch ($action) {
   case 'save_env':
     if (!atomic_write($ENV, (string)($_POST['content'] ?? ''), 0600)) respond(false, 'Could not write .env');
     respond(true, '.env saved.');
+
+  case 'cleanup_migration':
+    $cfg = load_cfg($CFG);
+    $old = $cfg['HERMES_HOME_MIGRATED_FROM'] ?? '';
+    if (empty($old)) respond(false, 'No migration pending.');
+    if (!is_dir($old)) respond(false, 'Old directory already removed: '.htmlspecialchars($old));
+    exec('rm -rf '.escapeshellarg($old).' 2>&1', $out, $code);
+    if ($code !== 0) respond(false, 'Cleanup failed: '.implode('; ', $out));
+    // Clear the migrated-from marker
+    $body = file_get_contents($CFG);
+    $body = preg_replace('/^HERMES_HOME_MIGRATED_FROM=.*$/m', 'HERMES_HOME_MIGRATED_FROM=""', $body);
+    if ($body === null || !atomic_write($CFG, $body, 0644)) respond(false, 'Could not update hermes.cfg');
+    respond(true, 'Old directory removed: '.htmlspecialchars($old));
 
   case 'reload_file':
     $which = $_POST['which'] ?? '';

@@ -48,7 +48,12 @@
         min="7.0.0">
 
 <CHANGES>
-##&version;
+##2026.06.26
+- Add HERMES_HOME migration: changing path in Settings copies files, restarts services, shows cleanup banner
+- Add fresh-install fallback: install block downloads rc scripts and emhttp assets from GitHub raw if missing
+- Add scripts/update-release.sh for automated upstream version bumps
+
+##2026.06.19
 - Rewrite plg in standard Unraid format (sequential FILE elements)
 - Pin upstream sources by release tag + SHA256
 - Hermetic Python from python-build-standalone (no Unraid system-lib coupling)
@@ -197,6 +202,18 @@ else
   ( cd "$RUNTIME/hermes-agent" && "$VENV/bin/pip" install --quiet --cache-dir "$WHEELS" -e . )
   ( cd "$RUNTIME/hermes-webui" && "$VENV/bin/pip" install --quiet --cache-dir "$WHEELS" -r requirements.txt )
   echo "$VENV_SHA" > "$VENV_MARKER"
+fi
+
+# --- Fresh-install fallback (download from GitHub if missing) -----------
+if [ ! -f "$PLUGIN_DIR/rc.hermes-webui" ] || [ ! -d "$PLUGIN_DIR/emhttp" ]; then
+  echo "[hermes] Fresh install detected — downloading missing auxiliary files..."
+  RAW="https://raw.githubusercontent.com/ruffkido/unraid-hermes-plugin/master"
+  curl -fsSL "$RAW/rc.hermes-webui"   -o "$PLUGIN_DIR/rc.hermes-webui"
+  curl -fsSL "$RAW/rc.hermes-gateway" -o "$PLUGIN_DIR/rc.hermes-gateway"
+  mkdir -p "$PLUGIN_DIR/emhttp/include"
+  curl -fsSL "$RAW/emhttp/Hermes.page"       -o "$PLUGIN_DIR/emhttp/Hermes.page"
+  curl -fsSL "$RAW/emhttp/include/action.php" -o "$PLUGIN_DIR/emhttp/include/action.php"
+  chmod +x "$PLUGIN_DIR/rc.hermes-webui" "$PLUGIN_DIR/rc.hermes-gateway"
 fi
 
 # --- Service scripts (RAM, reinstalled every boot) ----------------------

@@ -156,13 +156,44 @@ The `<CHANGES>` block inside the plg holds the changelog; each release appends a
 
 ### Cutting a release (maintainer flow)
 
+Use the bundled script to bump upstream versions and the `.plg` version automatically.
+
+```bash
+cd /mnt/user/appdata/github/unraid-hermes-plugin
+
+# Bump to latest upstream releases (auto-detect from GitHub API)
+./scripts/update-release.sh --latest
+
+# Or pin specific releases explicitly
+./scripts/update-release.sh --agent-tag v2026.6.19 --webui-tag v0.51.688
+```
+
+The script downloads tarballs, computes SHA256s, updates `hermes.plg` entities, and bumps the version to today's date. Then:
+
+```bash
+git diff hermes.plg      # review the changes
+git add hermes.plg       # stage
+git commit -m "release: <summary>"
+git push origin master
+```
+
+The Unraid **Update** button will appear automatically (remote `.plg` version > local, `pluginURL` is public).
+
+For full manual control you can still edit entities directly:
+```bash
+# Compute a SHA256 for any new URL:
+curl -sL <url> | sha256sum
+```
+
+### Cutting a release (legacy manual flow)
+
 ```bash
 cd /boot/config/plugins/hermes
 
 # 1. Bump pinned versions in hermes.plg (any of these, as needed):
 #    - pythonBUILD + pythonVER + pythonSHA
-#    - agentSHA + agentTARSHA
-#    - webuiSHA + webuiTARSHA
+#    - agentTAG + agentTARSHA
+#    - webuiTAG + webuiTARSHA
 #    - version (today's date YYYY.MM.DD)
 
 # Compute a SHA256 for any new URL:
