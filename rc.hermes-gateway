@@ -5,13 +5,17 @@
 
 # Configuration
 HERMES_AGENT_DIR="/usr/local/hermes/hermes-agent"
-HERMES_HOME="/boot/config/plugins/hermes/.hermes"
+DEFAULT_HERMES_HOME="/boot/config/plugins/hermes/.hermes"
+HERMES_HOME="$DEFAULT_HERMES_HOME"
 AGENT_VENV="/usr/local/hermes/venv"
 PIDFILE="/var/run/hermes-gateway.pid"
-LOGFILE="${HERMES_HOME}/gateway.log"
 
 # Source plugin settings if exists
 [ -f /boot/config/plugins/hermes/hermes.cfg ] && . /boot/config/plugins/hermes/hermes.cfg
+# Allow custom HERMES_HOME path
+[ -n "$HERMES_HOME_PATH" ] && HERMES_HOME="$HERMES_HOME_PATH"
+
+LOGFILE="${HERMES_HOME}/gateway.log"
 
 start() {
     if [ -f "$PIDFILE" ] && kill -0 $(cat "$PIDFILE") 2>/dev/null; then

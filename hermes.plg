@@ -3,7 +3,7 @@
 <!ENTITY name        "hermes">
 <!ENTITY author      "ruffkido">
 <!ENTITY version     "2026.05.19">
-<!ENTITY pluginURL   "https://raw.githubusercontent.com/ruffkido/unraid-hermes-plugin/main/hermes.plg">
+<!ENTITY pluginURL   "https://raw.githubusercontent.com/ruffkido/unraid-hermes-plugin/master/hermes.plg">
 <!ENTITY support     "https://github.com/ruffkido/unraid-hermes-plugin/issues">
 
 <!-- On-flash layout (persistent) -->
@@ -213,21 +213,36 @@ fi
 # --- hermes CLI wrapper -------------------------------------------------
 cat > /usr/local/sbin/hermes <<'WRAP'
 #!/bin/bash
-export HERMES_HOME=/boot/config/plugins/hermes/.hermes
+# Resolve HERMES_HOME from plugin settings (legacy fallback)
+HERMES_HOME="/boot/config/plugins/hermes/.hermes"
+if [ -f /boot/config/plugins/hermes/hermes.cfg ]; then
+    HERMES_HOME_CFG=$(sed -n 's/^HERMES_HOME_PATH="\(.*\)"/\1/p' /boot/config/plugins/hermes/hermes.cfg)
+    [ -n "$HERMES_HOME_CFG" ] && HERMES_HOME="$HERMES_HOME_CFG"
+fi
+export HERMES_HOME
 exec /usr/local/hermes/venv/bin/hermes "$@"
 WRAP
 chmod +x /usr/local/sbin/hermes
 
 # --- Persistent config (only created if missing) -----------------------
-mkdir -p "$PLUGIN_DIR/.hermes"
 if [ ! -f "$PLUGIN_DIR/hermes.cfg" ]; then
   cat > "$PLUGIN_DIR/hermes.cfg" <<'CFG'
 # Hermes plugin settings (persistent)
 WEBUI_ENABLED="yes"
 GATEWAY_ENABLED="no"
 WEBUI_PORT="9000"
+HERMES_HOME_PATH="/boot/config/plugins/hermes/.hermes"
 CFG
 fi
+
+# Resolve HERMES_HOME from config (default for legacy installs)
+HERMES_HOME="$PLUGIN_DIR/.hermes"
+if [ -f "$PLUGIN_DIR/hermes.cfg" ]; then
+    HERMES_HOME_CFG=$(sed -n 's/^HERMES_HOME_PATH="\(.*\)"/\1/p' "$PLUGIN_DIR/hermes.cfg")
+    [ -n "$HERMES_HOME_CFG" ] && HERMES_HOME="$HERMES_HOME_CFG"
+fi
+mkdir -p "$HERMES_HOME"
+chmod 700 "$HERMES_HOME"
 if [ ! -f "$PLUGIN_DIR/webui.env" ]; then
   cat > "$PLUGIN_DIR/webui.env" <<'ENV'
 # WebUI environment overrides (persistent).
@@ -241,7 +256,7 @@ echo ""
 echo "----------------------------------------------------"
 echo " Hermes $VERSION installed."
 echo " Config: $PLUGIN_DIR/hermes.cfg"
-echo " Data:   $PLUGIN_DIR/.hermes/"
+echo " Data:   $HERMES_HOME/"
 echo "----------------------------------------------------"
 echo ""
 ]]>

@@ -5,11 +5,11 @@
 # Configuration
 HERMES_WEBUI_DIR="/usr/local/hermes/hermes-webui"
 HERMES_AGENT_DIR="/usr/local/hermes/hermes-agent"
-HERMES_HOME="/boot/config/plugins/hermes/.hermes"
+DEFAULT_HERMES_HOME="/boot/config/plugins/hermes/.hermes"
+HERMES_HOME="$DEFAULT_HERMES_HOME"
 WEBUI_VENV="/usr/local/hermes/venv"
 WEBUI_ENV_FILE="/boot/config/plugins/hermes/webui.env"
 PIDFILE="/var/run/hermes-webui.pid"
-LOGFILE="${HERMES_HOME}/webui.log"
 
 # Pattern used by pgrep to find the daemonized server process. start.sh
 # forks bootstrap.py which daemonizes server.py, so $! from rc.script does
@@ -18,6 +18,10 @@ SERVER_CMDLINE_PATTERN="${WEBUI_VENV}/bin/python ${HERMES_WEBUI_DIR}/server.py"
 
 # Source plugin settings if exists
 [ -f /boot/config/plugins/hermes/hermes.cfg ] && . /boot/config/plugins/hermes/hermes.cfg
+# Allow custom HERMES_HOME path
+[ -n "$HERMES_HOME_PATH" ] && HERMES_HOME="$HERMES_HOME_PATH"
+
+LOGFILE="${HERMES_HOME}/webui.log"
 
 WEBUI_PORT="${WEBUI_PORT:-9000}"
 

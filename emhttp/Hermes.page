@@ -12,13 +12,19 @@ Tag="icon.png"
 
 $PLUGIN_DIR = '/boot/config/plugins/hermes';
 $CFG        = "$PLUGIN_DIR/hermes.cfg";
-$YAML       = "$PLUGIN_DIR/.hermes/config.yaml";
-$ENV        = "$PLUGIN_DIR/.hermes/.env";
-$WEBUI_LOG  = "$PLUGIN_DIR/.hermes/webui.log";
-$GW_LOG     = "$PLUGIN_DIR/.hermes/gateway.log";
+$HERMES_HOME = '/boot/config/plugins/hermes/.hermes';
+if (is_file($CFG)) {
+  foreach (file($CFG, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+    if (preg_match('/^\s*HERMES_HOME_PATH="?([^"]*)"?\s*$/', $line, $m)) $HERMES_HOME = $m[1];
+  }
+}
+$YAML       = "$HERMES_HOME/config.yaml";
+$ENV        = "$HERMES_HOME/.env";
+$WEBUI_LOG  = "$HERMES_HOME/webui.log";
+$GW_LOG     = "$HERMES_HOME/gateway.log";
 
 function load_cfg($path) {
-  $out = ['WEBUI_ENABLED'=>'yes', 'GATEWAY_ENABLED'=>'no', 'WEBUI_PORT'=>'9000'];
+  $out = ['WEBUI_ENABLED'=>'yes', 'GATEWAY_ENABLED'=>'no', 'WEBUI_PORT'=>'9000', 'HERMES_HOME_PATH'=>'/boot/config/plugins/hermes/.hermes'];
   if (!is_file($path)) return $out;
   foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
     if (preg_match('/^\s*([A-Z_]+)="?([^"]*)"?\s*$/', $line, $m)) $out[$m[1]] = $m[2];
@@ -53,7 +59,7 @@ function hermes_plugin_version() {
 
 function hermes_agent_version() {
   // hermes --version takes ~1s. Acceptable for a once-on-load render.
-  $out = @shell_exec("HERMES_HOME=/boot/config/plugins/hermes/.hermes "
+  $out = @shell_exec("HERMES_HOME=$HERMES_HOME "
                    . "timeout 5 /usr/local/hermes/venv/bin/hermes --version 2>/dev/null | head -1");
   if (preg_match('/v([\d.]+)\s*\(([\d.\-]+)\)/', (string)$out, $m)) return 'v'.$m[1].' ('.$m[2].')';
   return '';
@@ -182,6 +188,10 @@ $sha_webui = hermes_short_sha('hermes-webui');
     </select>
   </div>
   <div class="hermes-row">
+    <span class="hermes-label">HERMES_HOME path</span>
+    <input id="hermes-home-path" type="text" value="<?=htmlspecialchars($cfg['HERMES_HOME_PATH'])?>" style="width:320px" placeholder="/boot/config/plugins/hermes/.hermes">
+  </div>
+  <div class="hermes-row">
     <button class="hermes-btn" id="hermes-save-cfg">Apply</button>
     <span style="opacity:0.6;font-size:12px">Restart the affected service for changes to take effect.</span>
   </div>
@@ -273,7 +283,8 @@ $sha_webui = hermes_short_sha('hermes-webui');
       action:'save_cfg',
       WEBUI_ENABLED:   $('#hermes-webui-enabled').val(),
       GATEWAY_ENABLED: $('#hermes-gw-enabled').val(),
-      WEBUI_PORT:      $('#hermes-port').val()
+      WEBUI_PORT:      $('#hermes-port').val(),
+      HERMES_HOME_PATH:$('#hermes-home-path').val()
     }, refreshStatus).always(function(){ $btn.removeAttr('disabled'); });
   });
 

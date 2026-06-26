@@ -8,8 +8,17 @@ header('Content-Type: application/json');
 
 $PLUGIN_DIR = '/boot/config/plugins/hermes';
 $CFG        = "$PLUGIN_DIR/hermes.cfg";
-$YAML       = "$PLUGIN_DIR/.hermes/config.yaml";
-$ENV        = "$PLUGIN_DIR/.hermes/.env";
+
+// Resolve HERMES_HOME from plugin settings (default for legacy installs)
+$HERMES_HOME = '/boot/config/plugins/hermes/.hermes';
+if (is_file($CFG)) {
+  foreach (file($CFG, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+    if (preg_match('/^\s*HERMES_HOME_PATH="?([^"]*)"?\s*$/', $line, $m)) $HERMES_HOME = $m[1];
+  }
+}
+$YAML       = "$HERMES_HOME/config.yaml";
+$ENV        = "$HERMES_HOME/.env";
+
 
 function respond($ok, $msg, $extra = []) {
   echo json_encode(array_merge(['ok' => $ok, 'msg' => $msg], $extra));
@@ -26,7 +35,7 @@ function atomic_write($path, $content, $mode = 0644) {
 }
 
 function load_cfg($path) {
-  $out = ['WEBUI_ENABLED'=>'yes', 'GATEWAY_ENABLED'=>'no', 'WEBUI_PORT'=>'9000'];
+  $out = ['WEBUI_ENABLED'=>'yes', 'GATEWAY_ENABLED'=>'no', 'WEBUI_PORT'=>'9000', 'HERMES_HOME_PATH'=>'/boot/config/plugins/hermes/.hermes'];
   if (!is_file($path)) return $out;
   foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
     if (preg_match('/^\s*([A-Z_]+)="?([^"]*)"?\s*$/', $line, $m)) $out[$m[1]] = $m[2];
@@ -76,6 +85,7 @@ switch ($action) {
     $body .= 'WEBUI_ENABLED="'.clean_cfg_value($_POST['WEBUI_ENABLED']   ?? 'no'  )."\"\n";
     $body .= 'GATEWAY_ENABLED="'.clean_cfg_value($_POST['GATEWAY_ENABLED'] ?? 'no'  )."\"\n";
     $body .= 'WEBUI_PORT="'.clean_cfg_value($_POST['WEBUI_PORT']      ?? '9000')."\"\n";
+    $body .= 'HERMES_HOME_PATH="'.clean_cfg_value($_POST['HERMES_HOME_PATH'] ?? '/boot/config/plugins/hermes/.hermes')."\"\n";
     if (!atomic_write($CFG, $body, 0644)) respond(false, 'Could not write hermes.cfg');
     respond(true, 'Settings saved.');
 
