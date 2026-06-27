@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" standalone="yes"?>
+<?xml version="1.0" standalone="yes"?>
 <!DOCTYPE PLUGIN [
 <!ENTITY name        "hermes">
 <!ENTITY author      "ruffkido">
@@ -16,7 +16,7 @@
 <!ENTITY emhttp      "/usr/local/emhttp/plugins/&name;">
 
 <!-- Hermetic Python from python-build-standalone (Astral). Bundles its own
-     OpenSSL, expat, libffi, etc. â€” no Unraid system-library coupling.
+     OpenSSL, expat, libffi, etc. — no Unraid system-library coupling.
      hermes-agent requires python >= 3.11.
      Update by bumping pythonBUILD (release date) + pythonVER + pythonSHA.
      Release index: https://github.com/astral-sh/python-build-standalone/releases -->
@@ -26,7 +26,7 @@
 <!ENTITY pythonURL   "https://github.com/astral-sh/python-build-standalone/releases/download/&pythonBUILD;/&pythonPKG;">
 <!ENTITY pythonSHA   "d480f5d5878910ecbae212bf23bd7c25d7b209eb8cf5e98823c977384d272e88">
 
-<!-- Pinned upstream sources â€” release tags + SHA256 -->
+<!-- Pinned upstream sources — release tags + SHA256 -->
 <!ENTITY agentTAG    "v2026.6.19">
 <!ENTITY agentURL    "https://github.com/NousResearch/hermes-agent/archive/refs/tags/&agentTAG;.tar.gz">
 <!ENTITY agentTAR    "hermes-agent-&agentTAG;.tar.gz">
@@ -67,7 +67,7 @@
 
 <!--
 =============================================================================
- 1. CLEANUP â€” drop stale cached artifacts from older versions
+ 1. CLEANUP — drop stale cached artifacts from older versions
 =============================================================================
 -->
 <FILE Run="/bin/bash">
@@ -90,7 +90,7 @@ find "$PACKAGES" -maxdepth 1 -name 'python3-*.txz' -delete 2>/dev/null
 
 <!--
 =============================================================================
- 2. DOWNLOADS â€” pinned artifacts, cached on flash, SHA256 verified
+ 2. DOWNLOADS — pinned artifacts, cached on flash, SHA256 verified
 =============================================================================
 -->
 <FILE Name="&packages;/&pythonPKG;">
@@ -110,7 +110,7 @@ find "$PACKAGES" -maxdepth 1 -name 'python3-*.txz' -delete 2>/dev/null
 
 <!--
 =============================================================================
- 3. INSTALL â€” idempotent; runs on first install AND every boot via rc.local
+ 3. INSTALL — idempotent; runs on first install AND every boot via rc.local
 =============================================================================
 -->
 <FILE Run="/bin/bash">
@@ -206,7 +206,7 @@ fi
 
 # --- Fresh-install fallback (download from GitHub if missing) -----------
 if [ ! -f "$PLUGIN_DIR/rc.hermes-webui" ] || [ ! -d "$PLUGIN_DIR/emhttp" ]; then
-  echo "[hermes] Fresh install detected â€” downloading missing auxiliary files..."
+  echo "[hermes] Fresh install detected — downloading missing auxiliary files..."
   RAW="https://raw.githubusercontent.com/ruffkido/unraid-hermes-plugin/master"
   curl -fsSL "$RAW/rc.hermes-webui"   -o "$PLUGIN_DIR/rc.hermes-webui"
   curl -fsSL "$RAW/rc.hermes-gateway" -o "$PLUGIN_DIR/rc.hermes-gateway"
@@ -220,7 +220,7 @@ fi
 install -m 0755 "$PLUGIN_DIR/rc.hermes-webui"   /etc/rc.d/rc.hermes-webui
 install -m 0755 "$PLUGIN_DIR/rc.hermes-gateway" /etc/rc.d/rc.hermes-gateway
 
-# --- emhttp settings page (Settings â†’ Hermes) --------------------------
+# --- emhttp settings page (Settings → Hermes) --------------------------
 EMHTTP_DIR=/usr/local/emhttp/plugins/hermes
 mkdir -p "$EMHTTP_DIR/include"
 if [ -d "$PLUGIN_DIR/emhttp" ]; then
@@ -282,7 +282,7 @@ echo ""
 
 <!--
 =============================================================================
- 4. START SERVICES â€” reads hermes.cfg, starts only what's enabled
+ 4. START SERVICES — reads hermes.cfg, starts only what's enabled
 =============================================================================
 -->
 <FILE Run="/bin/bash">
@@ -303,7 +303,7 @@ fi
 
 <!--
 =============================================================================
- 5. REMOVE â€” uninstall; preserves user config on flash by default
+ 5. REMOVE — uninstall; preserves user config on flash by default
 =============================================================================
 -->
 <FILE Run="/bin/bash" Method="remove">
