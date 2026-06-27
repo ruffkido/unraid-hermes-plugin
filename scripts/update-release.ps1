@@ -63,6 +63,7 @@ $webuiSha   = Get-RemoteSha256 "https://github.com/nesquena/hermes-webui/archive
 $newVersion = Get-Date -Format "yyyy.MM.dd"
 
 # Patch .plg — read/write via .NET APIs to keep BOMless UTF-8 and preserve Unicode
+$utf8Bomless = New-Object System.Text.UTF8Encoding($false)
 $plg = [System.IO.File]::ReadAllText($plgPath, [System.Text.Encoding]::UTF8)
 
 $plg = [regex]::Replace($plg, '(?<=<!ENTITY version\s+")[^"]+', $newVersion)
@@ -75,7 +76,7 @@ $webuiUrl = "https://github.com/nesquena/hermes-webui/archive/refs/tags/&webuiTA
 $plg = [regex]::Replace($plg, '(?<=<!ENTITY webuiURL\s+")[^"]+', $webuiUrl)
 $plg = [regex]::Replace($plg, '(?<=<!ENTITY webuiTARSHA\s+")[^"]+', $webuiSha)
 
-[System.IO.File]::WriteAllText($plgPath, $plg, [System.Text.Encoding]::UTF8)
+[System.IO.File]::WriteAllText($plgPath, $plg, $utf8Bomless)
 
 Write-Host ""
 Write-Host "Updated ${plgPath}:"
