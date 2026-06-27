@@ -60,21 +60,20 @@ $webuiSha   = Get-RemoteSha256 "https://github.com/nesquena/hermes-webui/archive
 
 $newVersion = Get-Date -Format "yyyy.MM.dd"
 
-# Patch .plg
-$plg      = Get-Content -Raw -Path $plgPath
-$plgOld   = $plg
+# Patch .plg — read/write via .NET APIs to keep BOMless UTF-8 and preserve Unicode
+$plg = [System.IO.File]::ReadAllText($plgPath, [System.Text.Encoding]::UTF8)
 
 $plg = [regex]::Replace($plg, '(?<=<!ENTITY version\s+")[^"]+', $newVersion)
 $plg = [regex]::Replace($plg, '(?<=<!ENTITY agentTAG\s+")[^"]+', $AgentTag)
 $agentUrl = "https://github.com/NousResearch/hermes-agent/archive/refs/tags/&agentTAG;.tar.gz"
-$plg = [regex]::Replace($plg, '(?<=<!ENTITY agentURL\s+")[^"]+', [regex]::Escape($agentUrl))
+$plg = [regex]::Replace($plg, '(?<=<!ENTITY agentURL\s+")[^"]+', $agentUrl)
 $plg = [regex]::Replace($plg, '(?<=<!ENTITY agentTARSHA\s+")[^"]+', $agentSha)
 $plg = [regex]::Replace($plg, '(?<=<!ENTITY webuiTAG\s+")[^"]+', $WebuiTag)
 $webuiUrl = "https://github.com/nesquena/hermes-webui/archive/refs/tags/&webuiTAG;.tar.gz"
-$plg = [regex]::Replace($plg, '(?<=<!ENTITY webuiURL\s+")[^"]+', [regex]::Escape($webuiUrl))
+$plg = [regex]::Replace($plg, '(?<=<!ENTITY webuiURL\s+")[^"]+', $webuiUrl)
 $plg = [regex]::Replace($plg, '(?<=<!ENTITY webuiTARSHA\s+")[^"]+', $webuiSha)
 
-Set-Content -Path $plgPath -Value $plg -Encoding UTF8 -NoNewline
+[System.IO.File]::WriteAllText($plgPath, $plg, [System.Text.Encoding]::UTF8)
 
 Write-Host ""
 Write-Host "Updated ${plgPath}:"
