@@ -30,7 +30,8 @@ function Get-RemoteSha256 {
     param([string]$url)
     $tmp = [System.IO.Path]::GetTempFileName()
     try {
-        Invoke-RestMethod -Uri $url -Method Get -OutFile $tmp
+        # Use curl.exe — straight binary copy, no PowerShell response-string overhead
+        curl.exe -fsSL "$url" -o "$tmp"
         $hash = Get-FileHash -Path $tmp -Algorithm SHA256
         return $hash.Hash.ToLower()
     } finally {
