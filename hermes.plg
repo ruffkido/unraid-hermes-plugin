@@ -291,11 +291,11 @@ echo ""
 . /boot/config/plugins/hermes/hermes.cfg
 
 if [ "${WEBUI_ENABLED:-no}" = "yes" ]; then
-  /etc/rc.d/rc.hermes-webui start
+  /etc/rc.d/rc.hermes-webui start || true
 fi
 
 if [ "${GATEWAY_ENABLED:-no}" = "yes" ]; then
-  /etc/rc.d/rc.hermes-gateway start
+  /etc/rc.d/rc.hermes-gateway start || true
 fi
 ]]>
 </INLINE>
