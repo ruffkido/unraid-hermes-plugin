@@ -5,9 +5,11 @@
 # Usage:
 #   ./update-release.sh --latest
 #   ./update-release.sh --agent-tag v2026.6.19 --webui-tag v0.51.688
+#   ./update-release.sh --latest --push
 #
 # Computes tarball SHA256s from GitHub archive URLs, patches hermes.plg,
 # bumps the .plg version to today's date, and writes a formatted summary.
+# With --push it will also stage, commit, and push to origin/master for you.
 # After running, review + commit manually.
 #
 set -euo pipefail
@@ -20,6 +22,7 @@ PLG_REL="hermes.plg"
 AGENT_TAG=""
 WEBUI_TAG=""
 AUTO_LATEST=false
+PUSH=false
 
 # --- CLI parse ---------------------------------------------------------------
 while [[ $# -gt 0 ]]; do
@@ -27,6 +30,7 @@ while [[ $# -gt 0 ]]; do
     --agent-tag)   AGENT_TAG="$2"; shift 2;;
     --webui-tag)   WEBUI_TAG="$2"; shift 2;;
     --latest)      AUTO_LATEST=true; shift;;
+    --push)        PUSH=true; shift;;
     -h|--help)
       sed -n '2,/^#/p' "$0" | sed 's/^# \?//'
       exit 0
@@ -92,9 +96,18 @@ echo "  version: ${NEW_VERSION}"
 echo "  agent:   ${AGENT_TAG}  (${AGENT_SHA})"
 echo "  webui:   ${WEBUI_TAG}  (${WEBUI_SHA})"
 echo ""
-echo "Next steps:"
-echo "  git diff ${PLG_REL}"
-echo "  git add ${PLG_REL}"
-echo "  git commit -m \"release: bump upstreams (${NEW_VERSION})\""
-echo "  git push origin master"
+
+if $PUSH; then
+  echo "[info] Staging, committing, and pushing..."
+  git add "${PLG_REL}"
+  git commit -m "release: bump upstreams (${NEW_VERSION})"
+  git push origin master
+  echo "Pushed to origin/master."
+else
+  echo "Next steps:"
+  echo "  git diff ${PLG_REL}"
+  echo "  git add ${PLG_REL}"
+  echo "  git commit -m \"release: bump upstreams (${NEW_VERSION})\""
+  echo "  git push origin master"
+fi
 echo ""

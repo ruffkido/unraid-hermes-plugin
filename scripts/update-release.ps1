@@ -11,7 +11,8 @@
 param(
     [string]$AgentTag,
     [string]$WebuiTag,
-    [switch]$Latest
+    [switch]$Latest,
+    [switch]$Push
 )
 
 $ErrorActionPreference = "Stop"
@@ -81,9 +82,18 @@ Write-Host "  version: $newVersion"
 Write-Host "  agent:   $AgentTag  ($agentSha)"
 Write-Host "  webui:   $WebuiTag  ($webuiSha)"
 Write-Host ""
-Write-Host "Next steps:"
-Write-Host "  git diff hermes.plg"
-Write-Host "  git add hermes.plg"
-Write-Host "  git commit -m `"release: bump upstreams ($newVersion)`""
-Write-Host "  git push origin master"
+
+if ($Push) {
+    Write-Host "[info] Staging, committing, and pushing..."
+    git add hermes.plg
+    git commit -m "release: bump upstreams ($newVersion)"
+    git push origin master
+    Write-Host "Pushed to origin/master."
+} else {
+    Write-Host "Next steps:"
+    Write-Host "  git diff hermes.plg"
+    Write-Host "  git add hermes.plg"
+    Write-Host "  git commit -m `"release: bump upstreams ($newVersion)`""
+    Write-Host "  git push origin master"
+}
 Write-Host ""

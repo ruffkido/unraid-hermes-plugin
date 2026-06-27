@@ -165,6 +165,8 @@ cd /mnt/user/appdata/github/unraid-hermes-plugin
 ./scripts/update-release.sh --latest
 # or pin specific releases
 ./scripts/update-release.sh --agent-tag v2026.6.19 --webui-tag v0.51.701
+# or let it handle git for you too
+./scripts/update-release.sh --latest --push
 ```
 
 **Windows (PowerShell):**
@@ -174,18 +176,13 @@ cd C:\path\to\unraid-hermes-plugin
 .\scripts\update-release.ps1 -Latest
 # or pin specific releases
 .\scripts\update-release.ps1 -AgentTag v2026.6.19 -WebuiTag v0.51.701
+# or let it handle git for you too
+.\scripts\update-release.ps1 -Latest -Push
 ```
 
-The script downloads tarballs, computes SHA256s, updates `hermes.plg` entities, and bumps the version to today's date. Then:
+The script downloads tarballs, computes SHA256s, updates `hermes.plg` entities, and bumps the version to today's date. With `--push` / `-Push` it will also `git add`, `git commit`, and `git push` to `origin/master`. Without it, it prints the next steps for manual review.
 
-```bash
-git diff hermes.plg      # review the changes
-git add hermes.plg       # stage
-git commit -m "release: <summary>"
-git push origin master
-```
-
-The Unraid **Update** button will appear automatically (remote `.plg` version > local, `pluginURL` is public).
+Once pushed, the Unraid **Update** button will appear automatically (remote `.plg` version > local).
 
 For full manual control you can still edit entities directly:
 ```bash
