@@ -158,14 +158,22 @@ The `<CHANGES>` block inside the plg holds the changelog; each release appends a
 
 Use the bundled script to bump upstream versions and the `.plg` version automatically.
 
+**Linux / macOS / Unraid:**
 ```bash
 cd /mnt/user/appdata/github/unraid-hermes-plugin
 
-# Bump to latest upstream releases (auto-detect from GitHub API)
 ./scripts/update-release.sh --latest
+# or pin specific releases
+./scripts/update-release.sh --agent-tag v2026.6.19 --webui-tag v0.51.701
+```
 
-# Or pin specific releases explicitly
-./scripts/update-release.sh --agent-tag v2026.6.19 --webui-tag v0.51.688
+**Windows (PowerShell):**
+```powershell
+cd C:\path\to\unraid-hermes-plugin
+
+.\scripts\update-release.ps1 -Latest
+# or pin specific releases
+.\scripts\update-release.ps1 -AgentTag v2026.6.19 -WebuiTag v0.51.701
 ```
 
 The script downloads tarballs, computes SHA256s, updates `hermes.plg` entities, and bumps the version to today's date. Then:

@@ -38,8 +38,7 @@ done
 # --- Helpers -----------------------------------------------------------------
 gh_latest_tag() {
   local repo="$1"
-  curl -sL "https://api.github.com/repos/${repo}/releases/latest" \
-    | python3 -c 'import sys,json; print(json.load(sys.stdin).get("tag_name",""))'
+  curl -sL "https://api.github.com/repos/${repo}/releases/latest" | sed -n 's/.*"tag_name" *: *"\([^"]*\)".*/\1/p'
 }
 
 compute_sha256() {
