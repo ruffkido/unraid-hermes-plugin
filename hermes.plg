@@ -32,10 +32,10 @@
 <!ENTITY agentTAR    "hermes-agent-&agentTAG;.tar.gz">
 <!ENTITY agentTARSHA "69b805ec0a7a7be880068ba8a3b17479d7ba29f0cac0a2e9c6692c02f346ba91">
 
-<!ENTITY webuiTAG    "v0.51.701">
+<!ENTITY webuiTAG    "v0.51.702">
 <!ENTITY webuiURL    "https://github.com/nesquena/hermes-webui/archive/refs/tags/&webuiTAG;.tar.gz">
 <!ENTITY webuiTAR    "hermes-webui-&webuiTAG;.tar.gz">
-<!ENTITY webuiTARSHA "f0da04f83ecdba27f41958bc816034c8a1e7992a03530cb6412a6826b960d05d">
+<!ENTITY webuiTARSHA "c425327783581313e08d7bd0fca751d76d575c5923fbf5f8b7fbc71a822ab136">
 ]>
 
 <PLUGIN name="&name;"
